@@ -1,0 +1,26 @@
+{
+  "name": "B站收藏夹插件",
+  "version": "0.0.0.1",
+  "manifest_version": 3,
+  "description": "Firefox - B站收藏夹管理工具",
+  "host_permissions": [
+    "https://space.bilibili.com/*",
+    "https://api.bilibili.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://space.bilibili.com/*"],
+      "js": ["favlist.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "bilibili-fav-folder@example.com",
+      "data_collection_permissions": {
+        "required": ["none"]
+      },
+      "strict_min_version": "109.0"
+    }
+  }
+}
