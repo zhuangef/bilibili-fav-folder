@@ -920,16 +920,25 @@ async function copy_data(key, src_media_id, tar_media_id, mid, csrf) {
   // bili_fav_1633992011 1633992011 3520162807 289254911 af33c1d1773a415049ae526b3c3c9e52
   // bili_fav_1588976711 1588976711 3520162807 289254911 af33c1d1773a415049ae526b3c3c9e52
 
-  // 3. 分批处理资源（每40个一组）
+  // 3. 分批处理资源（每40个一组），并按批次和批内项目倒序复制
   const BATCH_SIZE = 40;
-  const sumBatch = Math.ceil(FavData.data.length / BATCH_SIZE);
+  const batches = [];
   for (let i = 0; i < FavData.data.length; i += BATCH_SIZE) {
-    const batch = FavData.data.slice(i, i + BATCH_SIZE);
+    batches.push({
+      batchNumber: i / BATCH_SIZE + 1,
+      items: FavData.data.slice(i, i + BATCH_SIZE),
+    });
+  }
+
+  const sumBatch = batches.length;
+  for (let i = batches.length - 1; i >= 0; i--) {
+    const { batchNumber, items } = batches[i];
+    const batch = [...items].reverse();
     // 构造resources参数
     const resources = batch.map((item) => `${item.id}:${item.type}`).join(",");
 
     await postMessage(
-      `正在处理第 ${i / BATCH_SIZE + 1} / ${sumBatch}批，当前批次共 ${
+      `正在倒序处理第 ${batchNumber} / ${sumBatch}批，当前批次共 ${
         batch.length
       } 个项目`
     );
@@ -945,13 +954,13 @@ async function copy_data(key, src_media_id, tar_media_id, mid, csrf) {
         "web"
       );
 
-      await postMessage(`第${i / BATCH_SIZE + 1}批次处理成功`);
+      await postMessage(`第${batchNumber}批次处理成功`);
       // 添加延迟防止请求过快
-      if (i + BATCH_SIZE < FavData.data.length) {
+      if (i > 0) {
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     } catch (error) {
-      await postMessage(`第${i / BATCH_SIZE + 1}批次处理失败`);
+      await postMessage(`第${batchNumber}批次处理失败`);
     }
   }
   console.log("所有项目处理完成");
