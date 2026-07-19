@@ -851,6 +851,7 @@ async function newFolderReques(folderName, csrfToken, privacy = 0) {
 async function fetchAllPages(fids) {
   let page = 1;
   let allData = [];
+  let pageData = [];
 
   while (true) {
     try {
@@ -858,7 +859,12 @@ async function fetchAllPages(fids) {
         `https://api.bilibili.com/x/v3/fav/resource/list?media_id=${fids}&pn=${page}&ps=40&keyword=&order=mtime&type=0&tid=0&platform=web&web_location=333.1387`
       );
       const { data } = await res.json();
-      allData = allData.concat(data.medias || []);
+      const medias = data.medias || [];
+      pageData.push({
+        pageNumber: page,
+        items: medias,
+      });
+      allData = allData.concat(medias);
 
       if (!data.has_more) break;
       page++;
@@ -868,7 +874,10 @@ async function fetchAllPages(fids) {
     }
   }
 
-  return allData;
+  return {
+    data: allData,
+    pages: pageData,
+  };
 }
 
 function getFavData(key) {
@@ -893,14 +902,15 @@ async function saveFavData(mediaId, cacheHours = 24) {
     const storageData = {
       timestamp: Date.now(),
       expires: Date.now() + cacheHours * 60 * 60 * 1000,
-      data: resources,
+      data: resources.data,
+      pages: resources.pages,
     };
 
     const storageKey = `bili_fav_${mediaId}`;
     localStorage.setItem(storageKey, JSON.stringify(storageData));
     console.log("收藏数据保存成功:", {
       key: storageKey,
-      count: resources.length,
+      count: resources.data.length,
       expires: new Date(storageData.expires).toLocaleString(),
     });
     return storageKey;
@@ -920,25 +930,23 @@ async function copy_data(key, src_media_id, tar_media_id, mid, csrf) {
   // bili_fav_1633992011 1633992011 3520162807 289254911 af33c1d1773a415049ae526b3c3c9e52
   // bili_fav_1588976711 1588976711 3520162807 289254911 af33c1d1773a415049ae526b3c3c9e52
 
-  // 3. 分批处理资源（每40个一组），并按批次和批内项目倒序复制
-  const BATCH_SIZE = 40;
-  const batches = [];
-  for (let i = 0; i < FavData.data.length; i += BATCH_SIZE) {
-    batches.push({
-      batchNumber: i / BATCH_SIZE + 1,
-      items: FavData.data.slice(i, i + BATCH_SIZE),
-    });
-  }
+  // 3. 按哔哩哔哩收藏夹网页的实际分页倒序处理，并按页内项目倒序复制
+  const batches = FavData.pages || [
+    {
+      pageNumber: 1,
+      items: FavData.data,
+    },
+  ];
 
   const sumBatch = batches.length;
   for (let i = batches.length - 1; i >= 0; i--) {
-    const { batchNumber, items } = batches[i];
+    const { pageNumber, items } = batches[i];
     const batch = [...items].reverse();
     // 构造resources参数
     const resources = batch.map((item) => `${item.id}:${item.type}`).join(",");
 
     await postMessage(
-      `正在倒序处理第 ${batchNumber} / ${sumBatch}批，当前批次共 ${
+      `正在倒序处理第 ${pageNumber} / ${sumBatch}页，当前页共 ${
         batch.length
       } 个项目`
     );
@@ -954,13 +962,13 @@ async function copy_data(key, src_media_id, tar_media_id, mid, csrf) {
         "web"
       );
 
-      await postMessage(`第${batchNumber}批次处理成功`);
+      await postMessage(`第${pageNumber}页处理成功`);
       // 添加延迟防止请求过快
       if (i > 0) {
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     } catch (error) {
-      await postMessage(`第${batchNumber}批次处理失败`);
+      await postMessage(`第${pageNumber}页处理失败`);
     }
   }
   console.log("所有项目处理完成");
