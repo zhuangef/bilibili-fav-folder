@@ -33,6 +33,46 @@ const observer = new MutationObserver(callback);
 observer.observe(targetNode, config);
 let currentUrl = window.location.href;
 
+
+function formatErrorMessage(error) {
+  if (!error) return "未知错误";
+  if (error instanceof Error) return error.message || error.toString();
+  if (typeof error === "string") return error;
+
+  try {
+    return JSON.stringify(error);
+  } catch (jsonError) {
+    return String(error);
+  }
+}
+
+function escapeMessageHtml(content) {
+  return String(content).replace(/[&<>"]/g, (char) => {
+    const entities = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      "\"": "&quot;",
+    };
+    return entities[char];
+  });
+}
+
+async function postErrorMessage(message, error) {
+  const errorDetail = formatErrorMessage(error);
+  const content = `${message}${errorDetail ? `：${errorDetail}` : ""}`;
+  await postMessage(
+    `<span class="error-message">${escapeMessageHtml(content)}</span>`
+  );
+}
+
+function logAndPostError(message, error) {
+  console.error(message, error);
+  postErrorMessage(message, error).catch((postError) => {
+    console.error("运行信息窗口显示报错失败:", postError);
+  });
+}
+
 function insertfavlist_btn() {
   const detail__actions = this.document.querySelector(
     ".favlist-info-detail__actions"
@@ -269,7 +309,9 @@ async function createSelectionPanel(up_favoriteLists, my_favoriteLists) {
             }
           }
 
-          await processFavorites().catch(console.error);
+          await processFavorites().catch((error) => {
+            logAndPostError("处理收藏夹时出错", error);
+          });
           await refresh();
         } else {
           alert("目标收藏夹容量不足,请更换新的目标收藏夹");
@@ -337,6 +379,7 @@ async function createSelectionPanel(up_favoriteLists, my_favoriteLists) {
                     const copy = await copy_data(key, data.id, e.id, mid, csrf);
                     console.log(`成功处理 ${data.title} -> ${e.title}`);
                   } catch (error) {
+                    await postErrorMessage(`处理 ${data.title} 时出错`, error);
                     console.error(`处理 ${data.title} 时出错:`, error);
                     throw error; // 可以选择是否抛出错误
                   }
@@ -351,6 +394,7 @@ async function createSelectionPanel(up_favoriteLists, my_favoriteLists) {
             await new Promise((resolve) => setTimeout(resolve, 2000)); // 可选延迟
             await refresh();
           } catch (error) {
+            await postErrorMessage("处理收藏夹时出错", error);
             console.error("处理收藏夹时出错:", error);
           }
         }, 3000);
@@ -578,7 +622,7 @@ async function refresh() {
   // 更新右容器数据
   const existingList = panel.querySelector(".right");
   if (!existingList) {
-    console.error("Right container not found");
+    logAndPostError("Right container not found");
     return null;
   }
 
@@ -621,6 +665,7 @@ async function refresh() {
 
     return newRightList;
   } catch (error) {
+    await postErrorMessage("Failed to refresh favorite list", error);
     console.error("Failed to refresh favorite list:", error);
     return null;
   }
@@ -775,6 +820,10 @@ function addStyles() {
       border-radius: 4px;
       transition: background-color 0.2s;
       }
+      .error-message {
+      color: #d32f2f;
+      background-color: #ffebee;
+      }
   `;
   document.head.appendChild(style);
 }
@@ -828,6 +877,7 @@ async function newFolderReques(folderName, csrfToken, privacy = 0) {
     await postMessage(`一个名为#${folderName}#的收藏夹创建成功`);
     return add;
   } catch (error) {
+    await postErrorMessage("添加收藏夹失败", error);
     console.error("添加收藏夹失败:", error);
     throw error;
   }
@@ -869,6 +919,7 @@ async function fetchAllPages(fids) {
       if (!data.has_more) break;
       page++;
     } catch (error) {
+      await postErrorMessage("请求失败", error);
       console.error("请求失败:", error);
       break;
     }
@@ -915,6 +966,7 @@ async function saveFavData(mediaId, cacheHours = 24) {
     });
     return storageKey;
   } catch (error) {
+    await postErrorMessage("保存数据失败", error);
     console.error("保存数据失败:", error);
   }
 }
@@ -923,7 +975,7 @@ async function copy_data(key, src_media_id, tar_media_id, mid, csrf) {
   // 1. 获取源收藏夹数据
   const FavData = getFavData(key);
   if (!FavData || !FavData.data || FavData.data.length === 0) {
-    console.error("没有可导出的收藏数据");
+    logAndPostError("没有可导出的收藏数据");
     return;
   }
 
@@ -1022,6 +1074,7 @@ async function copyFavResources(
     }
     return result;
   } catch (error) {
+    await postErrorMessage("Failed to copy resources", error);
     console.error("Failed to copy resources:", error);
     throw error;
   }
@@ -1049,6 +1102,7 @@ async function myFavoriteLists(mid) {
     console.log(list_alls);
     return list_alls.data.list;
   } catch (error) {
+    await postErrorMessage("获取收藏夹失败", error);
     console.error("获取收藏夹失败:", error);
     throw error;
   }
