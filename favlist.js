@@ -822,7 +822,6 @@ function addStyles() {
       }
       .error-message {
       color: #d32f2f;
-      background-color: #ffebee;
       }
   `;
   document.head.appendChild(style);
@@ -978,9 +977,6 @@ async function copy_data(key, src_media_id, tar_media_id, mid, csrf) {
     logAndPostError("没有可导出的收藏数据");
     return;
   }
-
-  // bili_fav_1633992011 1633992011 3520162807 289254911 af33c1d1773a415049ae526b3c3c9e52
-  // bili_fav_1588976711 1588976711 3520162807 289254911 af33c1d1773a415049ae526b3c3c9e52
 
   // 3. 按哔哩哔哩收藏夹网页的实际分页倒序处理，并按页内项目倒序复制
   const batches = FavData.pages || [
