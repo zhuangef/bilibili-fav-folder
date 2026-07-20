@@ -13,6 +13,7 @@ var panelHeaderLeft; // 面板头部左侧;
 var confirmBtn; // 确定按钮
 var messages; //信息列表
 var content; //面板内容区
+var favoriteSelectionOrder = 0; // 收藏夹选取顺序计数器
 
 const targetNode = document.body;
 const config = { childList: true, subtree: true };
@@ -105,6 +106,7 @@ function insertfavlist_btn() {
 
 // 创建选择面板
 async function createSelectionPanel(up_favoriteLists, my_favoriteLists) {
+  favoriteSelectionOrder = 0;
   // 添加样式
   addStyles();
 
@@ -319,81 +321,61 @@ async function createSelectionPanel(up_favoriteLists, my_favoriteLists) {
       }
     } else {
       if (Favorite_left[0]) {
-        // 复制模式逻辑
-        Favorite_left.forEach(async (e) => {
+        // 复制模式逻辑：Favorite_left 已按用户选取顺序排列
+        for (const e of Favorite_left) {
           await postMessage(`已选源收藏夹:${e.title}`);
-        });
-
-        // 创建目标收藏夹
-        const Favorite_left_datas = [];
-        for (const data of Favorite_left) {
-          await newFolderReques(data.title, csrf, (privacy = 0));
-          Favorite_left_datas.push(data.title);
         }
 
-        // todo 刷新面板数据
-        await refresh();
-        setTimeout(async () => {
-          // 重新获取右侧数据
-          const rightList = document.querySelector(".right_list");
-          const targetItems = [];
-
-          // 遍历右侧列表中的所有收藏夹项
-          rightList.querySelectorAll(".favorite-item").forEach((item) => {
-            const titleElement = item.querySelector(".item-title");
-            const countElement = item.querySelector(".item-count");
-
-            if (titleElement && countElement) {
-              const title = titleElement.textContent;
-              const count = parseInt(countElement.textContent) || 0;
-
-              // 检查条件：标题在datas中且计数为0
-              if (Favorite_left_datas.includes(title) && count === 0) {
-                // 获取整个收藏夹项的属性值
-                const itemData = {
-                  id: item.dataset.id,
-                  title: title,
-                  count: count,
-                  element: item,
-                };
-                targetItems.push(itemData);
-              } else {
-                console.log("没找到");
-                return;
-              }
-            }
-          });
-
-          async function processFavorites() {
-            // 使用 for...of 替代 forEach 以便使用 await
-            for (const data of Favorite_left) {
-              // 同样使用 for...of 处理 targetItems
-              for (const e of targetItems) {
-                if (e.title === data.title) {
-                  try {
-                    const favDa = await saveFavData(data.id);
-                    const copy = await copy_data(favDa, data.id, e.id, mid, csrf);
-                    console.log(`成功处理 ${data.title} -> ${e.title}`);
-                  } catch (error) {
-                    await postErrorMessage(`处理 ${data.title} 时出错`, error);
-                    console.error(`处理 ${data.title} 时出错:`, error);
-                    throw error; // 可以选择是否抛出错误
-                  }
-                }
-              }
-            }
-          }
-
-          // 使用方式
+        const copyPairs = [];
+        for (const source of Favorite_left) {
           try {
-            await processFavorites();
-            await new Promise((resolve) => setTimeout(resolve, 2000)); // 可选延迟
-            await refresh();
+            const newFolderData = await newFolderReques(source.title, csrf, 0);
+            const targetId = newFolderData?.data?.id;
+            copyPairs.push({ source, targetId });
           } catch (error) {
-            await postErrorMessage("处理收藏夹时出错", error);
-            console.error("处理收藏夹时出错:", error);
+            await postErrorMessage(`创建 ${source.title} 时出错`, error);
+            console.error(`创建 ${source.title} 时出错:`, error);
+            throw error;
           }
-        }, 3000);
+        }
+
+        const rightList = await refresh();
+        if (!rightList) return;
+
+        const unmatchedCreatedFolders = getFavoriteItems(rightList).filter(
+          (item) =>
+            copyPairs.some(({ source }) => source.title === item.title) &&
+            item.count === 0 &&
+            !copyPairs.some(({ targetId }) => targetId === item.id)
+        );
+
+        try {
+          for (const pair of copyPairs) {
+            const targetId =
+              pair.targetId ||
+              unmatchedCreatedFolders.find(
+                (item) => item.title === pair.source.title && !item.used
+              )?.id;
+
+            const fallbackTarget = unmatchedCreatedFolders.find(
+              (item) => item.id === targetId
+            );
+            if (fallbackTarget) fallbackTarget.used = true;
+
+            if (!targetId) {
+              throw new Error(`未找到新建目标收藏夹：${pair.source.title}`);
+            }
+
+            const favDa = await saveFavData(pair.source.id);
+            await copy_data(favDa, pair.source.id, targetId, mid, csrf);
+            console.log(`成功处理 ${pair.source.title} -> ${targetId}`);
+          }
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          await refresh();
+        } catch (error) {
+          await postErrorMessage("处理收藏夹时出错", error);
+          console.error("处理收藏夹时出错:", error);
+        }
       }
     }
   });
@@ -430,19 +412,34 @@ function getSelectedFavorites(dom) {
   const selectedItems = dom.querySelectorAll(".favorite-item.selected");
   const selectedFavorites = [];
 
-  selectedItems.forEach((item) => {
+  selectedItems.forEach((item, index) => {
     const id = item.dataset.id;
     const title = item.querySelector(".item-title")?.textContent || "";
     const count = parseInt(item.querySelector(".item-count")?.textContent) || 0;
+    const selectedOrder = parseInt(item.dataset.selectedOrder) || index;
 
     selectedFavorites.push({
       id,
       title,
       count,
+      selectedOrder,
     });
   });
 
-  return selectedFavorites;
+  return selectedFavorites.sort(
+    (current, next) => current.selectedOrder - next.selectedOrder
+  );
+}
+
+function getFavoriteItems(dom) {
+  if (!dom) return [];
+
+  return Array.from(dom.querySelectorAll(".favorite-item")).map((item) => ({
+    id: item.dataset.id,
+    title: item.querySelector(".item-title")?.textContent || "",
+    count: parseInt(item.querySelector(".item-count")?.textContent) || 0,
+    element: item,
+  }));
 }
 
 /**
@@ -700,6 +697,11 @@ function createFavoriteItem(item) {
   // 添加点击事件
   listItem.addEventListener("click", function () {
     this.classList.toggle("selected");
+    if (this.classList.contains("selected")) {
+      this.dataset.selectedOrder = (++favoriteSelectionOrder).toString();
+    } else {
+      delete this.dataset.selectedOrder;
+    }
     // 这里可以添加选中/取消选中的逻辑
     // 切换当前项的选中状态
     const isRightList = this.closest(".right_list") !== null;
@@ -713,6 +715,7 @@ function createFavoriteItem(item) {
         if (item !== this) {
           // 不是当前点击的项
           item.classList.remove("selected");
+          delete item.dataset.selectedOrder;
         }
       });
     }
