@@ -295,10 +295,8 @@ async function createSelectionPanel(up_favoriteLists, my_favoriteLists) {
             for (const data of Favorite_left) {
               const favDa = await saveFavData(data.id);
               if (favDa) {
-                const key = `bili_fav_${data.id}`;
-
                 let copy = await copy_data(
-                  key,
+                  favDa,
                   data.id,
                   Favorite_right[0].id,
                   mid,
@@ -369,14 +367,12 @@ async function createSelectionPanel(up_favoriteLists, my_favoriteLists) {
           async function processFavorites() {
             // 使用 for...of 替代 forEach 以便使用 await
             for (const data of Favorite_left) {
-              const key = `bili_fav_${data.id}`;
-
               // 同样使用 for...of 处理 targetItems
               for (const e of targetItems) {
                 if (e.title === data.title) {
                   try {
                     const favDa = await saveFavData(data.id);
-                    const copy = await copy_data(key, data.id, e.id, mid, csrf);
+                    const copy = await copy_data(favDa, data.id, e.id, mid, csrf);
                     console.log(`成功处理 ${data.title} -> ${e.title}`);
                   } catch (error) {
                     await postErrorMessage(`处理 ${data.title} 时出错`, error);
@@ -930,13 +926,13 @@ async function fetchAllPages(fids) {
   };
 }
 
-function getFavData(key) {
-  const storedData = localStorage.getItem(key);
-  return storedData ? JSON.parse(storedData) : [];
+function getFavData(source) {
+  if (!source) return null;
+  return typeof source === "object" ? source : null;
 }
 
 /**
- * 保存收藏数据到本地存储
+ * 读取收藏数据，保留复制所需的最小字段
  * @param {string} mediaId 收藏夹ID
  * @param {number} [cacheHours=24] 缓存有效期(小时)
  */
@@ -952,18 +948,19 @@ async function saveFavData(mediaId, cacheHours = 24) {
     const storageData = {
       timestamp: Date.now(),
       expires: Date.now() + cacheHours * 60 * 60 * 1000,
-      data: resources.data,
-      pages: resources.pages,
+      data: resources.data.map(({ id, type }) => ({ id, type })),
+      pages: resources.pages.map(({ pageNumber, items }) => ({
+        pageNumber,
+        items: items.map(({ id, type }) => ({ id, type })),
+      })),
     };
 
-    const storageKey = `bili_fav_${mediaId}`;
-    localStorage.setItem(storageKey, JSON.stringify(storageData));
-    console.log("收藏数据保存成功:", {
-      key: storageKey,
-      count: resources.data.length,
+    console.log("收藏数据读取成功:", {
+      mediaId,
+      count: storageData.data.length,
       expires: new Date(storageData.expires).toLocaleString(),
     });
-    return storageKey;
+    return storageData;
   } catch (error) {
     await postErrorMessage("保存数据失败", error);
     console.error("保存数据失败:", error);
