@@ -297,22 +297,27 @@ async function createSelectionPanel(up_favoriteLists, my_favoriteLists) {
             for (const data of Favorite_left) {
               const favDa = await saveFavData(data.id);
               if (favDa) {
-                let copy = await copy_data(
+                await copy_data(
                   favDa,
                   data.id,
                   Favorite_right[0].id,
                   mid,
-                  csrf
+                  csrf,
+                  data.title,
+                  Favorite_right[0].title
                 );
+                await refresh();
                 // 等待当前copy_data完成后再继续下一次循环
               }
             }
           }
 
-          await processFavorites().catch((error) => {
+          try {
+            await processFavorites();
+            await postSuccessMessage("全部项目处理完成！");
+          } catch (error) {
             logAndPostError("处理收藏夹时出错", error);
-          });
-          await refresh();
+          }
         } else {
           alert("目标收藏夹容量不足,请更换新的目标收藏夹");
         }
@@ -367,11 +372,23 @@ async function createSelectionPanel(up_favoriteLists, my_favoriteLists) {
             }
 
             const favDa = await saveFavData(pair.source.id);
-            await copy_data(favDa, pair.source.id, targetId, mid, csrf);
+            const targetTitle =
+              getFavoriteItems(rightList).find((item) => item.id === targetId)
+                ?.title || pair.source.title;
+            await copy_data(
+              favDa,
+              pair.source.id,
+              targetId,
+              mid,
+              csrf,
+              pair.source.title,
+              targetTitle
+            );
+            await refresh();
             console.log(`成功处理 ${pair.source.title} -> ${targetId}`);
           }
+          await postSuccessMessage("全部项目处理完成！");
           await new Promise((resolve) => setTimeout(resolve, 2000));
-          await refresh();
         } catch (error) {
           await postErrorMessage("处理收藏夹时出错", error);
           console.error("处理收藏夹时出错:", error);
@@ -822,6 +839,10 @@ function addStyles() {
       .error-message {
       color: #d32f2f;
       }
+      .success-message {
+      color: #2e7d32;
+      font-weight: 600;
+      }
   `;
   document.head.appendChild(style);
 }
@@ -970,7 +991,15 @@ async function saveFavData(mediaId, cacheHours = 24) {
   }
 }
 
-async function copy_data(key, src_media_id, tar_media_id, mid, csrf) {
+async function copy_data(
+  key,
+  src_media_id,
+  tar_media_id,
+  mid,
+  csrf,
+  sourceFolderTitle = src_media_id,
+  targetFolderTitle = tar_media_id
+) {
   // 1. 获取源收藏夹数据
   const FavData = getFavData(key);
   if (!FavData || !FavData.data || FavData.data.length === 0) {
@@ -1020,7 +1049,11 @@ async function copy_data(key, src_media_id, tar_media_id, mid, csrf) {
     }
   }
   console.log("所有项目处理完成");
-  await postMessage(`已复制到目标文件夹`);
+  await postMessage(
+    `源收藏夹「${escapeMessageHtml(
+      sourceFolderTitle
+    )}」已复制到目标文件夹「${escapeMessageHtml(targetFolderTitle)}」`
+  );
 }
 
 /**
@@ -1105,6 +1138,12 @@ async function myFavoriteLists(mid) {
 }
 
 // 推送消息
+async function postSuccessMessage(message) {
+  await postMessage(
+    `<span class="success-message">${escapeMessageHtml(message)}</span>`
+  );
+}
+
 async function postMessage(content) {
   messagesContainer = this.document.querySelector(".message_list");
   if (!messagesContainer) {
