@@ -306,6 +306,7 @@ async function createSelectionPanel(up_favoriteLists, my_favoriteLists) {
                   data.title,
                   Favorite_right[0].title
                 );
+                await refresh();
                 // 等待当前copy_data完成后再继续下一次循环
               }
             }
@@ -314,7 +315,6 @@ async function createSelectionPanel(up_favoriteLists, my_favoriteLists) {
           try {
             await processFavorites();
             await postSuccessMessage("全部项目处理完成！");
-            await refresh();
           } catch (error) {
             logAndPostError("处理收藏夹时出错", error);
           }
@@ -384,11 +384,11 @@ async function createSelectionPanel(up_favoriteLists, my_favoriteLists) {
               pair.source.title,
               targetTitle
             );
+            await refresh();
             console.log(`成功处理 ${pair.source.title} -> ${targetId}`);
           }
           await postSuccessMessage("全部项目处理完成！");
           await new Promise((resolve) => setTimeout(resolve, 2000));
-          await refresh();
         } catch (error) {
           await postErrorMessage("处理收藏夹时出错", error);
           console.error("处理收藏夹时出错:", error);
