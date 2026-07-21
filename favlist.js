@@ -1050,9 +1050,7 @@ async function copy_data(
   }
   console.log("所有项目处理完成");
   await postMessage(
-    `源收藏夹「${escapeMessageHtml(
-      sourceFolderTitle
-    )}」已复制到目标收藏夹「${escapeMessageHtml(targetFolderTitle)}」`
+    `源收藏夹#${escapeMessageHtml(sourceFolderTitle)}#已复制到目标收藏夹#${escapeMessageHtml(targetFolderTitle)}#`
   );
 }
 
