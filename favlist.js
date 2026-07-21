@@ -1052,7 +1052,7 @@ async function copy_data(
   await postMessage(
     `源收藏夹「${escapeMessageHtml(
       sourceFolderTitle
-    )}」已复制到目标文件夹「${escapeMessageHtml(targetFolderTitle)}」`
+    )}」已复制到目标收藏夹「${escapeMessageHtml(targetFolderTitle)}」`
   );
 }
 
